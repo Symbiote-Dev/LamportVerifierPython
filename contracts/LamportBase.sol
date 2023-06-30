@@ -5,8 +5,6 @@ abstract contract LamportBase {
     bool initialized = false;
     bytes32 pkh; // public key hash
 
-    //event BeforeVerifyEvent(uint256 value); // Define an event
-
     // initial setup of the Lamport system
     function init(bytes32 firstPKH) public {
         require(!initialized, "LamportBase: Already initialized");
@@ -48,8 +46,6 @@ abstract contract LamportBase {
             keccak256(abi.encodePacked(currentpub)) == pkh,
             "LamportBase: currentpub does not match known PUBLIC KEY HASH"
         );
-    
-        //emit BeforeVerifyEvent(uint256(keccak256(abi.encodePacked(prepacked, nextPKH)))); // Emit the event before verify_u256
 
         require(
             verify_u256(
@@ -63,10 +59,10 @@ abstract contract LamportBase {
         pkh = nextPKH;
         _;
     }
-
-    // Add to LamportBase contract
+        // Add to LamportBase contract
     function computePKH(bytes32[2][256] calldata pubKey) public view returns (bytes32) {
         return keccak256(abi.encodePacked(pubKey));
     }
 }
+
 

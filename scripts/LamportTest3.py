@@ -1,6 +1,7 @@
 import lorem
 import sys
 import hashlib
+from web3 import Web3
 from brownie import web3, accounts, Wei, LamportTest2
 from brownie.network import gas_price
 from brownie.network.gas.strategies import LinearScalingStrategy
@@ -15,6 +16,7 @@ import struct
 from offchain.KeyTracker import KeyTracker
 from offchain.Types import LamportKeyPair, Sig, PubPair
 from offchain.functions import hash_b, sign_hash, verify_signed_hash
+from eth_abi import encode_abi
 
 gas_strategy = LinearScalingStrategy("60 gwei", "70 gwei", 1.1)
 
@@ -42,12 +44,29 @@ def verify_u256(bits: int, sig: List[bytes], pub: List[List[bytes]]) -> bool:
     for i in range(256):
         index = 1 if ((bits & (1 << (255 - i))) > 0) else 0
         print(f"Index: {i}, Bit: {index}")
-        print(f"Pub Value: {pub[i][index].hex()}")
-        hashed_sig = hashlib.sha256(sig[i].encode()).digest()
+        print(f"Signature Value: {sig[i]}")  # Print the signature value
+
+        print(f"Pub Value: {pub[i][index]}")
+        hashed_sig = hashlib.sha256(sig[i].encode('utf-8')).digest()
         print(f"Hash: {hashed_sig.hex()}")
-        if pub[i][index].hex() != hashed_sig.hex():
+        if pub[i][index] != hashed_sig:
             return False
     return True
+
+'''
+def verify_u256(bits: int, sig: List[bytes], pub: List[List[bytes]]) -> bool:
+    for i in range(256):
+        index = 1 if ((bits & (1 << (255 - i))) > 0) else 0
+        print(f"Index: {i}, Bit: {index}")
+        print(f"Signature Value: {sig[i]}")  # Print the signature value
+        print(f"Pub Value: {pub[i][index]}")
+        hashed_sig = hashlib.sha256(sig[i].encode('utf-8')).digest()
+        print(f"Hash: {hashed_sig.hex()}")
+        if pub[i][index] != hashed_sig:
+            return False
+    return True
+'''
+
 
 
 
@@ -101,24 +120,47 @@ class LamportTest:
             if KeyTracker.pkh_from_public_key(current_keys.pub) == expectedPKH:
                 print("Public Key Hash (PKH) check passed.")
 
-            nextpkh = KeyTracker.pkh_from_public_key(next_keys.pub)
-            nextpkh_bytes = bytes.fromhex(nextpkh[2:])
-
             messageToBroadcast = lorem.sentence()
-            messageToBroadcast_bytes = messageToBroadcast.encode('utf-8')
+            nextpkh = KeyTracker.pkh_from_public_key(next_keys.pub)
+            #nextpkh_bytes = bytes.fromhex(nextpkh[2:])
 
-            print(nextpkh)
+            #messageToBroadcast_bytes = messageToBroadcast.encode('utf-8')
+
+            temp = encode_abi(['string'], [messageToBroadcast])
+            #packed = encode_abi(['bytes', 'bytes32'], [temp, nextpkh])
+            callhash = Web3.solidityKeccak(['bytes','bytes32'], [temp, nextpkh]).hex()
+            #callhash = Web3.solidityKeccak(['bytes'], [temp])
+            '''
+     
+            '''
+            #print(nextpkh)
+            '''
+            messageToBroadcast_bytes = messageToBroadcast.encode('utf-8')  # assuming messageToBroadcast is a string
+            nextPKH_bytes = bytes.fromhex(nextpkh[2:])  # assuming nextPKH is an Ethereum address starting with "0x"
             print("first", messageToBroadcast_bytes)
-            message_packed = encode_packed(messageToBroadcast_bytes, nextpkh_bytes)
-            print("second", message_packed)
-            keccak_hash = hashlib.sha3_256(message_packed).digest()
-            print("third", keccak_hash)
-            hex_hash = keccak_hash.hex()
-            print("fourth", hex_hash)
-            integer_hash = int(hex_hash, 16)
-            print("fifth", integer_hash)
 
-         
+            message_packed = messageToBroadcast_bytes + nextPKH_bytes  # equivalent to abi.encodePacked in Solidity
+            print("second", message_packed)
+
+            keccak_hash = hashlib.sha3_256(message_packed).digest()  # equivalent to keccak256 in Solidity
+            print("third", keccak_hash)
+
+            hex_hash = keccak_hash.hex()  # this is a hexadecimal string representation of the hash
+            print("fourth", hex_hash)
+
+            integer_hash = int.from_bytes(keccak_hash, byteorder="big")  # converting to uint256
+            print("fifth", integer_hash)
+            '''
+
+
+
+            #message_packed = encode_packed(messageToBroadcast_bytes, nextpkh_bytes)
+            #keccak_hash = hashlib.sha3_256(message_packed).digest()
+            #hex_hash = keccak_hash.hex()
+            print(callhash)
+
+            #integer_hash = int.(callhash, byteorder='big')
+
             #msg_hash_bin = int(keccak_hash.hex(), 16)
 
             #msg_hash_int = int(str(keccak_hash), 10)  # Convert the string to an integer with base 10
@@ -139,23 +181,24 @@ class LamportTest:
             #keccak_hash = keccak.new(digest_bits=256)
             #keccak_hash.update(packed_message)
             #result = keccak_hash.hexdigest()
-            #callhash = hash_b(message_packed)
+            #callhash = hash_b(packed)
 
             #packed = web3.solidityKeccak(['string', 'bytes32'], [messageToBroadcast, nextpkh])
             #packed_int = int(packed.hex(), 16)
             #callhash = hash_b(encode_hex(packed))
             #callhash = int.from_bytes((result), byteorder='big')
             #callhash = int.from_bytes(bytes.fromhex(hash_b(encode_hex(packed))), byteorder='big')
+            callhash_int = int(callhash, 16)
 
 
-            sig = sign_hash(hex_hash, current_keys.pri) # first arg is keccak'd (hex'd and int'd)
+            sig = sign_hash(callhash, current_keys.pri) # first arg is keccak'd (hex'd and int'd)
             sentsig = list(map(lambda s: f"0x{s}", sig))
             #print(sig)
             print("OOOOOOOOOOOOOO")
             #print(sentsig)
             
-
-            is_valid_sig = verify_u256(integer_hash, sig, current_keys.pub)
+            is_valid_sig = verify_signed_hash(callhash, sig, current_keys.pub)
+            #is_valid_sig = verify_u256(callhash_int, sig, current_keys.pub)
             if not is_valid_sig:
                 print("Signature validity check failed.")
                 sys.exit()
