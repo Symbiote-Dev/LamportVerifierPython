@@ -205,6 +205,9 @@ class LamportTest:
             else:
                 print("Signature validity check passed.")
 
+            print(sig)
+            print(list(map(lambda s: f"0x{s}", sig)))
+
             # Make sure the account is passed as a string
             _contract.broadcast(
                 messageToBroadcast,

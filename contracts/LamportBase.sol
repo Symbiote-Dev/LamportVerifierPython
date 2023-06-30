@@ -59,10 +59,4 @@ abstract contract LamportBase {
         pkh = nextPKH;
         _;
     }
-        // Add to LamportBase contract
-    function computePKH(bytes32[2][256] calldata pubKey) public view returns (bytes32) {
-        return keccak256(abi.encodePacked(pubKey));
-    }
 }
-
-
