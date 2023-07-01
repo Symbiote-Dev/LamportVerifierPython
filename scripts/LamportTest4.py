@@ -16,6 +16,7 @@ import time
 from typing import List
 import struct
 from offchain.KeyTracker import KeyTracker
+from offchain.soliditypack import solidity_pack
 from offchain.Types import LamportKeyPair, Sig, PubPair
 from offchain.functions import hash_b, sign_hash, verify_signed_hash
 from eth_abi import encode_abi
@@ -99,8 +100,8 @@ class LamportTest:
         k = KeyTracker()
         print("KeyTracker initialized.")
 
-        _contract.init(k.pkh)
-        print("Contract initialized.")
+        _contract.init(k.pkh[2:])
+        print(k.pkh[2:], "Contract initialized.")
         #is_initialized = _contract.isInitialized()
         #print(is_initialized)
 
@@ -127,13 +128,15 @@ class LamportTest:
 
             messageToBroadcast = lorem.sentence()
             nextpkh = KeyTracker.pkh_from_public_key(next_keys.pub)
+            temp = solidity_pack(['string'], [messageToBroadcast])
+            packed_message = solidity_pack(['bytes', 'bytes32'], [temp, nextpkh])
             #nextpkh_bytes = bytes.fromhex(nextpkh[2:])
 
             #messageToBroadcast_bytes = messageToBroadcast.encode('utf-8')
 
-            temp = encode_abi(['string'], [messageToBroadcast])
+            #temp = encode_abi(['string'], [messageToBroadcast])
             #packed = encode_abi(['bytes', 'bytes32'], [temp, nextpkh])
-            callhash = Web3.solidityKeccak(['bytes','bytes32'], [temp, nextpkh])
+            #callhash = Web3.solidityKeccak(['bytes','bytes32'], [temp, nextpkh]).hex()
             #callhash = Web3.solidityKeccak(['bytes'], [temp])
             flattened_pub_keys = list(chain.from_iterable(current_keys.pub))
             types = ['bytes32'] * len(flattened_pub_keys)
@@ -164,7 +167,7 @@ class LamportTest:
             #message_packed = encode_packed(messageToBroadcast_bytes, nextpkh_bytes)
             #keccak_hash = hashlib.sha3_256(message_packed).digest()
             #hex_hash = keccak_hash.hex()
-            print("callhash", callhash)
+            #print("callhash", callhash)
 
             #integer_hash = int.(callhash, byteorder='big')
 
@@ -188,8 +191,8 @@ class LamportTest:
             #keccak_hash = keccak.new(digest_bits=256)
             #keccak_hash.update(packed_message)
             #result = keccak_hash.hexdigest()
-            #callhash = hash_b(packed)
-
+            callhash = hash_b(packed_message)
+            print("callhash", callhash)
             #packed = web3.solidityKeccak(['string', 'bytes32'], [messageToBroadcast, nextpkh])
             #packed_int = int(packed.hex(), 16)
             #callhash = hash_b(encode_hex(packed))
@@ -222,8 +225,8 @@ class LamportTest:
             #print(currentkeyhash)
             print(expectedPKH)
             print(pkh2.hex()) 
-            print(k.pkh.hex())
-            print(nextpkh.hex())
+            print(k.pkh)
+            print(nextpkh[2:])
             #nextpkh = KeyTracker.pkh_from_public_key(next_keys.pub)
 
             # Make sure the account is passed as a string
@@ -235,7 +238,7 @@ class LamportTest:
             _contract.broadcast(
                 messageToBroadcast,
                 current_keys.pub,
-                nextpkh,
+                nextpkh[2:],
                 list(map(lambda s: f"0x{s}", sig)),
                 {'from': str(accs[0])}
             )
@@ -252,6 +255,29 @@ class LamportTest:
             for event in last_calculated_hash_filter.get_all_entries():
                 hash_value = event['args']['hash']
                 print(f"Last calculated hash: {hash_value}")
+        
+            pkh_updated_filter = _contract.events.PkhUpdated.createFilter(fromBlock='latest')
+            for event in pkh_updated_filter.get_all_entries():
+                previous_pkh = event['args']['previousPKH']
+                new_pkh = event['args']['newPKH']
+                print(f"Previous PKH: {previous_pkh}, New PKH: {new_pkh}")
+            
+            message_with_number_filter = _contract.events.MessageWithNumber.createFilter(fromBlock='latest')
+
+            # Then, you can use this filter to get all entries
+            for event in message_with_number_filter.get_all_entries():
+                message = event['args']['messageToBroadcast']
+                number = event['args']['numberToBroadcast']
+                print(f"Message: {message}, Number: {number}")
+
+            # Create the filter
+            message_filter = _contract.events.Message.createFilter(fromBlock='latest')
+
+            # Get all entries from the "Message" event
+            for event in message_filter.get_all_entries():
+                message = event['args']['message']
+                print(f"Message: {message}")
+
 
         b2 = web3.eth.getBalance(accs[0])
         print(f"Balance after: {b2}")
@@ -265,14 +291,17 @@ class LamportTest:
             "iterations": ITERATIONS,
         }
 
-        with open('gas_data2.json', 'r') as json_file:
-            gas_data = json.load(json_file)
+        with open('gas_data2.json', 'a+') as json_file:
+            try:
+                gas_data = json.load(json_file)
+            except json.JSONDecodeError:
+                gas_data = {}
 
-        gas_data.append(datum)
+        gas_data.update(datum)
         print("Appending data to 'gas_data'...")
 
-        with open('gas_data.json', 'w') as json_file:
+        with open('gas_data2.json', 'w') as json_file:
             json.dump(gas_data, json_file, indent=2)
-        print("Data saved to 'gas_data.json'.")
+        print("Data saved to 'gas_data2.json'.")
 
         print("'can_broadcast_message_via_broadcast2' completed.")
