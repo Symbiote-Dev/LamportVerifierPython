@@ -133,7 +133,7 @@ class LamportTest:
 
             temp = encode_abi(['string'], [messageToBroadcast])
             #packed = encode_abi(['bytes', 'bytes32'], [temp, nextpkh])
-            callhash = Web3.solidityKeccak(['bytes','bytes32'], [temp, nextpkh]).hex()
+            callhash = Web3.solidityKeccak(['bytes','bytes32'], [temp, nextpkh])
             #callhash = Web3.solidityKeccak(['bytes'], [temp])
             flattened_pub_keys = list(chain.from_iterable(current_keys.pub))
             types = ['bytes32'] * len(flattened_pub_keys)
@@ -205,16 +205,16 @@ class LamportTest:
             #print(sentsig)
             
             print("callhash int", callhash_int)
-            is_valid_sig = verify_signed_hash(callhash, sig, current_keys.pub)
-            #is_valid_sig = verify_u256(callhash_int, sig, current_keys.pub)
+            #is_valid_sig = verify_signed_hash(callhash, sig, current_keys.pub)
+            is_valid_sig = verify_u256(callhash_int, sig, current_keys.pub)
             if not is_valid_sig:
                 print("Signature validity check failed.")
-                sys.exit()
+            #    sys.exit()
             else:
                 print("Signature validity check passed.")
 
-            print(sig)
-            print(list(map(lambda s: f"0x{s}", sig)))
+            #print(sig)
+            #print(list(map(lambda s: f"0x{s}", sig)))
 
             #is_initialized = _contract.isInitialized()
             #print("contract initialized=", is_initialized)
@@ -222,9 +222,9 @@ class LamportTest:
             #print(currentkeyhash)
             print(expectedPKH)
             print(pkh2.hex()) 
-            print(k.pkh)
-            #print(nextpkh)
-            nextpkh = KeyTracker.pkh_from_public_key(next_keys.pub)
+            print(k.pkh.hex())
+            print(nextpkh.hex())
+            #nextpkh = KeyTracker.pkh_from_public_key(next_keys.pub)
 
             # Make sure the account is passed as a string
             currentPKH = _contract.getPKH()
@@ -240,6 +240,18 @@ class LamportTest:
                 {'from': str(accs[0])}
             )
             print("Broadcast completed.")
+            
+            # Listen for the 'VerificationFailed' event
+            verification_failed_filter = _contract.events.VerificationFailed.createFilter(fromBlock='latest')
+            for event in verification_failed_filter.get_all_entries():
+                hashed_data = event['args']['hashedData']
+                print(f"Verification failed for hashed data: {hashed_data}")
+
+            # Listen for the 'LogLastCalculatedHash' event
+            last_calculated_hash_filter = _contract.events.LogLastCalculatedHash.createFilter(fromBlock='latest')
+            for event in last_calculated_hash_filter.get_all_entries():
+                hash_value = event['args']['hash']
+                print(f"Last calculated hash: {hash_value}")
 
         b2 = web3.eth.getBalance(accs[0])
         print(f"Balance after: {b2}")
