@@ -1,7 +1,7 @@
 import lorem
 import sys
 from itertools import chain
-
+import random
 import hashlib
 from web3 import Web3
 from brownie import web3, accounts, Wei, LamportTest2
@@ -48,6 +48,10 @@ def main():
     lamport_test = LamportTest()
     # Convert all account objects to strings before passing them
     lamport_test.can_broadcast_message_via_broadcast2([str(acc) for acc in accounts])
+    lamport_test.can_broadcast_message_via_broadcast_with_number([str(acc) for acc in accounts])
+    lamport_test.can_broadcast_message_via_broadcast_with_number_and_address([str(acc) for acc in accounts])
+
+
 
 class LamportTest:
     def __init__(self):
@@ -86,7 +90,11 @@ class LamportTest:
             if KeyTracker.pkh_from_public_key(current_keys.pub) == expectedPKH:
                 print("Public Key Hash (PKH) check passed.")
 
+            # contract call message
             messageToBroadcast = lorem.sentence()
+
+
+            # 
             nextpkh = KeyTracker.pkh_from_public_key(next_keys.pub)
             temp = solidity_pack(['string'], [messageToBroadcast])
             packed_message = solidity_pack(['bytes', 'bytes32'], [temp, nextpkh])
@@ -101,15 +109,8 @@ class LamportTest:
                 sys.exit()
             else:
                 print("Signature validity check passed.")
-
-
         
             print("next public key:", nextpkh[2:])
-
-            flattened_pub_keys = list(chain.from_iterable(current_keys.pub))
-            types = ['bytes32'] * len(flattened_pub_keys)
-            current_key_hash = Web3.solidityKeccak(types, flattened_pub_keys).hex()
-            print("current_key_hash", current_key_hash)
 
             # Make sure the account is passed as a string
             _contract.broadcast(
@@ -120,7 +121,7 @@ class LamportTest:
                 {'from': str(accs[0])}
             )
             print("Broadcast completed.")
-            
+
             # Listen for the 'VerificationFailed' event
             verification_failed_filter = _contract.events.VerificationFailed.createFilter(fromBlock='latest')
             for event in verification_failed_filter.get_all_entries():
@@ -132,20 +133,16 @@ class LamportTest:
             for event in last_calculated_hash_filter.get_all_entries():
                 hash_value = event['args']['hash']
                 print(f"Last calculated hash: {hash_value}")
-        
+
+            # This is pulling public key hash data from LamportBase.sol
             pkh_updated_filter = _contract.events.PkhUpdated.createFilter(fromBlock='latest')
             for event in pkh_updated_filter.get_all_entries():
                 previous_pkh = event['args']['previousPKH']
                 new_pkh = event['args']['newPKH']
                 print(f"Previous PKH: {previous_pkh}, New PKH: {new_pkh}")
             
-            message_with_number_filter = _contract.events.MessageWithNumber.createFilter(fromBlock='latest')
+            # message with number event filter
 
-            # Then, you can use this filter to get all entries
-            for event in message_with_number_filter.get_all_entries():
-                message = event['args']['messageToBroadcast']
-                number = event['args']['numberToBroadcast']
-                print(f"Message: {message}, Number: {number}")
 
             # Create the filter
             message_filter = _contract.events.Message.createFilter(fromBlock='latest')
@@ -182,3 +179,137 @@ class LamportTest:
         print("Data saved to 'gas_data2.json'.")
 
         print("'can_broadcast_message_via_broadcast2' completed.")
+
+    def can_broadcast_message_via_broadcast_with_number(self, accs):
+        print("Running 'can_broadcast_message_via_broadcast_with_number'...")
+
+        _contract = self.contract.deploy({'from': str(accs[0])})
+        print("Contract deployed.")
+        
+        k = KeyTracker()
+        print("KeyTracker initialized.")
+
+        _contract.init(k.pkh[2:])
+        print(k.pkh[2:], "Contract initialized.")
+
+        for i in range(ITERATIONS):
+            print(f"Iteration {i+1}...")
+            current_keys = k.current_key_pair()
+            next_keys = k.get_next_key_pair()
+
+            expectedPKH = KeyTracker.pkh_from_public_key(current_keys.pub)
+            currentPKH = _contract.getPKH()
+
+            print(f"Expected PKH: {expectedPKH}")
+            print(f"Current PKH: {currentPKH}")
+
+            if KeyTracker.pkh_from_public_key(current_keys.pub) == expectedPKH:
+                print("Public Key Hash (PKH) check passed.")
+
+            nextpkh = KeyTracker.pkh_from_public_key(next_keys.pub)
+
+            messageToBroadcast = lorem.sentence()
+            numToBroadcast = random.randint(0, 1000000)
+
+            temp = solidity_pack(['string', 'uint256'], [messageToBroadcast, numToBroadcast])
+            packed_message = solidity_pack(['bytes', 'bytes32'], [temp, nextpkh])
+
+            callhash = hash_b(packed_message)
+            sig = sign_hash(callhash, current_keys.pri)
+
+            is_valid_sig = verify_signed_hash(callhash, sig, current_keys.pub)
+            if not is_valid_sig:
+                print("Signature validity check failed.")
+                sys.exit()
+            else:
+                print("Signature validity check passed.")
+
+            print("next public key:", nextpkh[2:])
+
+            _contract.broadcastWithNumber(
+                messageToBroadcast,
+                numToBroadcast,
+                current_keys.pub,
+                nextpkh[2:],
+                list(map(lambda s: f"0x{s}", sig)),
+                {'from': str(accs[0])}
+            )
+            print("BroadcastWithNumber completed.")
+
+        print("'can_broadcast_message_via_broadcast_with_number' completed.")
+
+        message_with_number_filter = _contract.events.MessageWithNumber.createFilter(fromBlock='latest')
+
+        for event in message_with_number_filter.get_all_entries():
+            message = event['args']['message']
+            number = event['args']['number']
+            print(f"Message: {message}, Number: {number}")
+    
+    def can_broadcast_message_via_broadcast_with_number_and_address(self, accs):
+        print("Running 'can_broadcast_message_via_broadcast_with_number_and_address'...")
+
+        _contract = self.contract.deploy({'from': str(accs[0])})
+        print("Contract deployed.")
+        
+        k = KeyTracker()
+        print("KeyTracker initialized.")
+
+        _contract.init(k.pkh[2:])
+        print(k.pkh[2:], "Contract initialized.")
+
+        for i in range(ITERATIONS):
+            print(f"Iteration {i+1}...")
+            current_keys = k.current_key_pair()
+            next_keys = k.get_next_key_pair()
+
+            expectedPKH = KeyTracker.pkh_from_public_key(current_keys.pub)
+            currentPKH = _contract.getPKH()
+
+            print(f"Expected PKH: {expectedPKH}")
+            print(f"Current PKH: {currentPKH}")
+
+            if KeyTracker.pkh_from_public_key(current_keys.pub) == expectedPKH:
+                print("Public Key Hash (PKH) check passed.")
+
+            nextpkh = KeyTracker.pkh_from_public_key(next_keys.pub)
+
+            messageToBroadcast = lorem.sentence()
+            numToBroadcast = random.randint(0, 1000000)
+            addressToBroadcast = accs[numToBroadcast % len(accs)]
+
+            temp = solidity_pack(['string', 'uint256', 'address'], [messageToBroadcast, numToBroadcast, addressToBroadcast])
+            packed_message = solidity_pack(['bytes', 'bytes32'], [temp, nextpkh])
+
+            callhash = hash_b(packed_message)
+            sig = sign_hash(callhash, current_keys.pri)
+
+            is_valid_sig = verify_signed_hash(callhash, sig, current_keys.pub)
+            if not is_valid_sig:
+                print("Signature validity check failed.")
+                sys.exit()
+            else:
+                print("Signature validity check passed.")
+
+            print("next public key:", nextpkh[2:])
+
+            _contract.broadcastWithNumberAndAddress(
+                messageToBroadcast,
+                numToBroadcast,
+                addressToBroadcast,
+                current_keys.pub,
+                nextpkh[2:],
+                list(map(lambda s: f"0x{s}", sig)),
+                {'from': str(accs[0])}
+            )
+            print("BroadcastWithNumberAndAddress completed.")
+
+        print("'can_broadcast_message_via_broadcast_with_number_and_address' completed.")
+        
+        message_with_number_and_address_filter = _contract.events.MessageWithNumberAndAddress.createFilter(fromBlock='latest')
+
+        # Get all entries from the "MessageWithNumberAndAddress" event
+        for event in message_with_number_and_address_filter.get_all_entries():
+            message = event['args']['message']
+            number = event['args']['number']
+            addr = event['args']['addr']
+            print(f"Message: {message}, Number: {number}, Address: {addr}")
